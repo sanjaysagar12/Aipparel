@@ -4,9 +4,9 @@ defaults:
 _target_: data.datasets.gcd_mm_dataset.GCDMM
 
 
-root_dir: ???
-editing_dir: ???
-caption_dir: ???
+root_dir: '/root/aipparel/dataset/gcd_shifted/'
+editing_dir: '/root/aipparel/dataset/gcdmm/garmentcodedata_editing/'
+caption_dir: '/root/aipparel/dataset/gcdmm/long-caption-processed/'
 # sampling_rate: [0,0,0,0,1]
 editing_flip_prob: 0.5
 sampling_rate: [0.3, 0.1, 0.1, 0.4, 0.1]

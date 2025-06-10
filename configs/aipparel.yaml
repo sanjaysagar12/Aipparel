@@ -20,8 +20,10 @@ version: liuhaotian/llava-v1.5-7b
 precision: bf16
 evaluate: False
 conv_type: llava_v1
-pre_trained: null
+pre_trained: '/root/aipparel/models/aipparel_pretrained.pth'
 storage_dir: null
+
+
 hydra:
   run:
-    dir: ???
+    dir: '/root/aipparel/Aipparel/logs/'

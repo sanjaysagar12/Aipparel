@@ -1,2 +1,2 @@
-wandb_dir: ???
-wandb_cache_dir: ???
+wandb_dir: '/root/aipparel/Aipparel/logs/wandb'
+wandb_cache_dir: '/root/aipparel/Aipparel/logs/wandb_cache'
