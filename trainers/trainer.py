@@ -1,6 +1,6 @@
 # Training loop func
 from torch.utils.data import DataLoader
-from typing import Literal, Optional
+from typing import Literal, Optional, Dict, Any
 import logging
 log = logging.getLogger(__name__)
 import torch
@@ -22,7 +22,7 @@ from trainers.utils import dict_to_cuda, AverageMeter, ProgressMeter, master_log
 from .convert_zero_to_torch import get_fp32_state_dict_from_zero_checkpoint
 import torch.distributed as dist
 import time
-
+import json
 
 @dataclass
 class WandbConfig:
@@ -725,4 +725,87 @@ class Trainer():
             is_last_step = step == self.num_steps - 1
             if (step % self.save_freq == 0 ) or is_last_step:
                 self.model_engine.save_checkpoint(os.path.join(self.log_dir, f"ckpt_{step}"))
-                
+    
+    def inferance_setup(
+        self,
+        in_config: DictConfig,
+        model: AIpparelForCausalLM,
+        tokenizer: transformers.PreTrainedTokenizer,
+        conv_type: str,
+        resume: Optional[str] = None,
+        input_dict: Dict[Any, Any] = None,
+    ):
+        ds_config = {
+            "train_micro_batch_size_per_gpu": self.batch_size,
+            "gradient_accumulation_steps": 1,
+            "fp16": {
+                "enabled": self.precision == "fp16",
+            },
+            "bf16": {
+                "enabled": self.precision == "bf16",
+            },
+            "gradient_clipping": 1.0,
+            "zero_optimization": {
+                "stage": 2,
+                "contiguous_gradients": True,
+                "overlap_comm": True,
+                "reduce_scatter": True,
+                "reduce_bucket_size": 5e8,
+                "allgather_bucket_size": 5e8,
+            },
+        }
+        ds_config["optimizer"] = self.optimizer_config
+        
+        
+        self.model_engine, _, _, _ = deepspeed.initialize(
+            model=model,
+            config=ds_config,
+        )
+
+        self.tokenizer = tokenizer
+        self.log_dir = self.output_dir
+        self._start_experiment(in_config, resume, False)
+        
+        # ADDED: Explicit checkpoint loading
+        if resume and os.path.exists(resume):
+            log.info(f"Loading checkpoint from {resume}")
+            try:
+                state_dict = torch.load(resume, map_location='cpu')
+                self.model_engine.module.load_state_dict(state_dict, strict=False)
+                log.info("Checkpoint loaded successfully")
+            except Exception as e:
+                log.error(f"Failed to load checkpoint: {e}")
+        
+        self.model_engine.eval()
+        
+        output_dict = self.model_engine.module.evaluate(
+            input_dict["images_clip"],
+            input_dict["question_ids"],
+            input_dict["question_attention_masks"],
+            endpoints=input_dict["questions_pattern_endpoints"],
+            endpoints_mask=input_dict["questions_pattern_endpoints_mask"],
+            transformations=input_dict["questions_pattern_transformations"],
+            transformations_mask=input_dict["questions_pattern_transformations_mask"],
+            max_new_tokens=2100
+        )
+
+        output_dict = dict_to_cpu(output_dict)
+        output_dict = dict_to_dtype(output_dict, torch.float32)
+        output_dict["input_mask"] = torch.arange(output_dict["output_ids"].shape[1]).reshape(1, -1) >= input_dict["question_ids"].shape[1]
+            
+        output_text, patterns, error_type = self.datawrapper.decode(output_dict, self.tokenizer)
+        print("Output dictionary keys:", list(output_dict.keys()))
+        print("Output text:", output_text)
+        print("Patterns:", patterns)
+        print("Error type:", error_type)
+        print("Patterns spec", patterns.spec)
+        save_path = f'{self.output_dir}/text_inference_output'
+        os.makedirs(save_path, exist_ok=True)
+        try:
+            with open(os.path.join(save_path, "output.txt"), "w") as f:
+                f.write(f"Output Text: {output_text}\n")
+                f.write(f"Error Type: {error_type}\n")
+            with open(os.path.join(save_path, "patterns.json"), "w") as f:
+                json.dump(patterns.spec, f, indent=4)
+        except Exception as e:
+            log.error(f"Error saving output: {e}")
