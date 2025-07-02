@@ -725,15 +725,15 @@ class Trainer():
             is_last_step = step == self.num_steps - 1
             if (step % self.save_freq == 0 ) or is_last_step:
                 self.model_engine.save_checkpoint(os.path.join(self.log_dir, f"ckpt_{step}"))
-    
-    def inferance_setup(
+
+    def inference_eval_setup(
         self,
         in_config: DictConfig,
         model: AIpparelForCausalLM,
         tokenizer: transformers.PreTrainedTokenizer,
         conv_type: str,
         resume: Optional[str] = None,
-        input_dict: Dict[Any, Any] = None,
+        
     ):
         ds_config = {
             "train_micro_batch_size_per_gpu": self.batch_size,
@@ -778,6 +778,8 @@ class Trainer():
         
         self.model_engine.eval()
         
+        
+    def inference_setup(self, input_dict: Dict[Any, Any] = None):
         output_dict = self.model_engine.module.evaluate(
             input_dict["images_clip"],
             input_dict["question_ids"],
@@ -794,11 +796,6 @@ class Trainer():
         output_dict["input_mask"] = torch.arange(output_dict["output_ids"].shape[1]).reshape(1, -1) >= input_dict["question_ids"].shape[1]
             
         output_text, patterns, error_type = self.datawrapper.decode(output_dict, self.tokenizer)
-        print("Output dictionary keys:", list(output_dict.keys()))
-        print("Output text:", output_text)
-        print("Patterns:", patterns)
-        print("Error type:", error_type)
-        print("Patterns spec", patterns.spec)
         save_path = f'{self.output_dir}/text_inference_output'
         os.makedirs(save_path, exist_ok=True)
         try:
@@ -809,3 +806,4 @@ class Trainer():
                 json.dump(patterns.spec, f, indent=4)
         except Exception as e:
             log.error(f"Error saving output: {e}")
+        return patterns, output_text, error_type
