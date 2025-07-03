@@ -806,4 +806,4 @@ class Trainer():
                 json.dump(patterns.spec, f, indent=4)
         except Exception as e:
             log.error(f"Error saving output: {e}")
-        return patterns, output_text, error_type
+        return patterns.spec

@@ -36,9 +36,17 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import uvicorn
 from typing import Dict, Any
-
+from fastapi.middleware.cors import CORSMiddleware
 # Global variables to store initialized components
 app = FastAPI(title="AIpparel Inference API", version="1.0.0")
+# Add CORS middleware to accept all requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods (GET, POST, PUT, DELETE, etc.)
+    allow_headers=["*"],  # Allows all headers
+)
 inference_components = None
 
 @dataclass
@@ -61,7 +69,7 @@ class InferenceRequest(BaseModel):
 
 class InferenceResponse(BaseModel):
     status: str
-    result: Optional[Dict[str, Any]] = None
+    patterns: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
 
 # FastAPI endpoints
@@ -94,11 +102,11 @@ async def run_inference(request: InferenceRequest):
         input_dict = create_input_dict(request.user_input, tokenizer, cfg, ddp_local_rank, torch_dtype)
         
         # Run inference
-        result = trainer.inference_setup(input_dict=input_dict)
-        
+        patterns = trainer.inference_setup(input_dict=input_dict)
+
         return InferenceResponse(
             status="success",
-            result={"input": request.user_input, "output": "Inference completed successfully"}
+            patterns=patterns
         )
     
     except Exception as e:
